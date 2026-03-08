@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { GameState, SocketEvents, Card } from '@shared/types';
 import { v4 as uuidv4 } from 'uuid';
 
-interface UseGameSocketReturn {
+interface GameSocketContextType {
   gameState: GameState | null;
   socket: Socket | null;
   myHand: Card[];
@@ -13,7 +13,9 @@ interface UseGameSocketReturn {
   emit: (event: string, data: any, callback?: (response: any) => void) => void;
 }
 
-export function useGameSocket(): UseGameSocketReturn {
+const GameSocketContext = createContext<GameSocketContextType | undefined>(undefined);
+
+export function GameSocketProvider({ children }: { children: ReactNode }) {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
@@ -26,7 +28,7 @@ export function useGameSocket(): UseGameSocketReturn {
       localStorage.setItem('clue_userId', userId);
     }
 
-    // Connect socket
+    // Connect socket only once
     const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
     const socket = io(socketUrl, {
       auth: {
@@ -55,7 +57,6 @@ export function useGameSocket(): UseGameSocketReturn {
 
     socket.on(SocketEvents.PRIVATE_MESSAGE, (data: { fromName: string; message: string }) => {
       console.log(`Private message from ${data.fromName}: ${data.message}`);
-      // TODO: In a full app, this would be shown in a message queue UI
       alert(`${data.fromName}: ${data.message}`);
     });
 
@@ -82,24 +83,35 @@ export function useGameSocket(): UseGameSocketReturn {
   const userId = typeof window !== 'undefined' ? localStorage.getItem('clue_userId') : null;
   const myHand = gameState?.players.find((p) => p.userId === userId)?.hand || [];
 
-  const emit = useCallback(
-    (event: string, data: any, callback?: (response: any) => void) => {
-      if (socketRef.current) {
-        if (callback) {
-          socketRef.current.emit(event, data, callback);
-        } else {
-          socketRef.current.emit(event, data);
-        }
+  const emit = (event: string, data: any, callback?: (response: any) => void) => {
+    if (socketRef.current) {
+      if (callback) {
+        socketRef.current.emit(event, data, callback);
+      } else {
+        socketRef.current.emit(event, data);
       }
-    },
-    []
-  );
+    }
+  };
 
-  return {
+  const value: GameSocketContextType = {
     gameState,
     socket: socketRef.current,
     myHand,
     isConnected,
     emit,
   };
+
+  return (
+    <GameSocketContext.Provider value={value}>
+      {children}
+    </GameSocketContext.Provider>
+  );
+}
+
+export function useGameSocket(): GameSocketContextType {
+  const context = useContext(GameSocketContext);
+  if (context === undefined) {
+    throw new Error('useGameSocket must be used within a GameSocketProvider');
+  }
+  return context;
 }

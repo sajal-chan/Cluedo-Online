@@ -1,8 +1,9 @@
 'use client';
 
-import { useGameSocket } from '../../useGameSocket';
+import { useGameSocket } from '../../GameSocketContext';
 import { SocketEvents } from '@shared/types';
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 interface LobbyPageProps {
   params: {
@@ -13,6 +14,31 @@ interface LobbyPageProps {
 export default function LobbyPage({ params }: LobbyPageProps) {
   const router = useRouter();
   const { gameState, emit, isConnected } = useGameSocket();
+
+  // Join the room when component mounts and socket is connected
+  useEffect(() => {
+    if (isConnected && !gameState) {
+      const userId = localStorage.getItem('clue_userId') || '';
+      const playerName = `Player ${Math.random().toString(36).substr(2, 9)}`;//adding a random number helps deal with an empty string issue
+      
+      emit(SocketEvents.JOIN_ROOM, 
+        {
+          roomId: params.roomId,
+          userId,
+          name: playerName,
+        }, 
+        (result: any) => {
+          // This is the callback!
+          if (!result.success) {
+            console.error("Failed to auto-join room:", result.error);
+            alert('Failed to Join the Room') //add the error as well
+          } else {
+            console.log("Successfully synced with room:", result.roomId);
+          }
+        }
+      );
+    }
+  }, [isConnected, gameState, params.roomId, emit]);
 
   const handleStartGame = () => {
     const userId = localStorage.getItem('clue_userId') || '';

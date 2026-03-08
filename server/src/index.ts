@@ -3,11 +3,11 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { GameManager } from './GameManager';
-import { SocketEvents, GameState, Card } from '@shared/types';
+import { SocketEvents, GameState, Card, JoinResult } from '@shared/types';
 
-const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
+const app = express();// for HHTP request
+const httpServer = createServer(app); //first thing to touch the incoming traffic decides between io or http 
+const io = new Server(httpServer, { //for socket.io connections
   cors: {
     origin: process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000',
     credentials: true,
@@ -25,21 +25,23 @@ app.use(express.json());
 const gameManager = new GameManager();
 
 // Set up broadcast callback
-gameManager.setBroadcastCallback((roomId: string) => {
-  const room = gameManager.getRoom(roomId);
-  if (!room) return;
+gameManager.setBroadcastCallback(
+  (roomId: string) => {
+    const room = gameManager.getRoom(roomId);
+    if (!room) return;
 
-  // Send state to each connected player (with hand stripping)
-  room.players.forEach((player) => {
-    if (player.socketId) {
-      const socket = io.sockets.sockets.get(player.socketId);
-      if (socket) {
-        const state = gameManager.getStateForPlayer(roomId, player.userId);
-        socket.emit(SocketEvents.GAME_STATE_UPDATE, state);
+    // Send state to each connected player (with hand stripping)
+    room.players.forEach((player) => {
+      if (player.socketId) {
+        const socket = io.sockets.sockets.get(player.socketId);
+        if (socket) {
+          const state = gameManager.getStateForPlayer(roomId, player.userId);
+          socket.emit(SocketEvents.GAME_STATE_UPDATE, state);
+        }
       }
-    }
-  });
-});
+    });
+  }
+);
 
 // Socket.io connection
 io.on('connection', (socket) => {
@@ -74,9 +76,9 @@ io.on('connection', (socket) => {
   }
 
   // JOIN_ROOM event
-  socket.on(SocketEvents.JOIN_ROOM, (data: { roomId?: string; userId: string; name: string }, callback) => {
+   socket.on(SocketEvents.JOIN_ROOM, (data: { roomId?: string; userId: string; name: string }, callback) => {
     try {
-      let result;
+      let result:JoinResult;
 
       if (data.roomId) {
         // Join existing room
@@ -91,20 +93,19 @@ io.on('connection', (socket) => {
         gameManager.setPlayerSocketId(data.userId, socket.id);
         socket.join(result.roomId);
 
-        // Broadcast to all in room
-        gameManager.setBroadcastCallback((roomId: string) => {
-          const room = gameManager.getRoom(roomId);
-          if (!room) return;
+        // Send updated state to all players in the room
+        const room = gameManager.getRoom(result.roomId);
+        if (room) {
           room.players.forEach((player) => {
             if (player.socketId) {
               const s = io.sockets.sockets.get(player.socketId);
               if (s) {
-                const state = gameManager.getStateForPlayer(roomId, player.userId);
+                const state = gameManager.getStateForPlayer(result.roomId!, player.userId);
                 s.emit(SocketEvents.GAME_STATE_UPDATE, state);
               }
             }
           });
-        });
+        }
 
         callback({ success: true, roomId: result.roomId });
       } else {
@@ -128,8 +129,7 @@ io.on('connection', (socket) => {
   });
 
   // MAKE_SUGGESTION event
-  socket.on(
-    SocketEvents.MAKE_SUGGESTION,
+  socket.on(SocketEvents.MAKE_SUGGESTION,
     (
       data: {
         roomId: string;
@@ -157,8 +157,7 @@ io.on('connection', (socket) => {
   );
 
   // REVEAL_CARD event
-  socket.on(
-    SocketEvents.REVEAL_CARD,
+  socket.on(SocketEvents.REVEAL_CARD,
     (
       data: {
         roomId: string;
@@ -178,8 +177,7 @@ io.on('connection', (socket) => {
   );
 
   // MAKE_ACCUSATION event
-  socket.on(
-    SocketEvents.MAKE_ACCUSATION,
+  socket.on(SocketEvents.MAKE_ACCUSATION,
     (
       data: {
         roomId: string;

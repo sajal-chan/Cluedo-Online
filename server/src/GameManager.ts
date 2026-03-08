@@ -20,10 +20,10 @@ import { TimerManager } from './TimerManager';
 import { randomBytes } from 'crypto';
 
 export class GameManager {
-  private rooms: Map<string, RoomState> = new Map();
+  private rooms: Map<string, RoomState> = new Map();//roomid->roomstate
   private userToRoom: Map<string, string> = new Map(); // userId -> roomId
   private timerManager: TimerManager = new TimerManager();
-  private broadcastCallback: (roomId: string) => void = () => {};
+  private broadcastCallback: (roomId: string) => void = () => {}; //empty function that returns void, if we dont do this then we could run into can not call undefined error
 
   setBroadcastCallback(callback: (roomId: string) => void): void {
     this.broadcastCallback = callback;
@@ -535,7 +535,7 @@ export class GameManager {
       hand: player.userId === userId ? player.hand : [],
     }));
 
-    return {
+    return {//manually return all these things so we dont leake any of the card data to an opponent
       roomId: room.roomId,
       phase: room.phase,
       players: playersWithStrippedHands,

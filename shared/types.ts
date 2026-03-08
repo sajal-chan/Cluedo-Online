@@ -12,7 +12,6 @@ export const SUSPECTS = [
   'Col. Mustard',
   'Mrs. White',
   'Mr. Green',
-  'Mrs. Peacock',
   'Professor Plum',
 ];
 
@@ -86,7 +85,7 @@ export interface LogEntry {
   visibleTo: string[];
 }
 
-// Socket event names
+// custom Socket event names
 export const SocketEvents = {
   // Client → Server
   JOIN_ROOM: 'join_room',

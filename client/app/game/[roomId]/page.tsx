@@ -1,6 +1,6 @@
 'use client';
 
-import { useGameSocket } from '../../useGameSocket';
+import { useGameSocket } from '../../GameSocketContext';
 import { useState, useEffect } from 'react';
 import { SocketEvents, Card } from '@shared/types';
 import { PlayerCircle } from '@/components/PlayerCircle';

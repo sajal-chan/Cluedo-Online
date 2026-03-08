@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useGameSocket } from './useGameSocket';
+import { useGameSocket } from './GameSocketContext';
 import { SocketEvents } from '@shared/types';
 
 export default function HomePage() {

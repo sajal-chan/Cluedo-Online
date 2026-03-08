@@ -9,7 +9,7 @@
     ],
     "module": "ESNext",
     "skipLibCheck": true,
-    "rootDir": ".",
+    "rootDir": "..",
     "baseUrl": ".",
     "paths": {
       "@/*": [

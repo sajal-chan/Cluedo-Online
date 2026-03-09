@@ -9,14 +9,14 @@ const app = express();// for HHTP request
 const httpServer = createServer(app); //first thing to touch the incoming traffic decides between io or http 
 const io = new Server(httpServer, { //for socket.io connections
   cors: {
-    origin: process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000',
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
     credentials: true,
   },
 });
 
 app.use(
   cors({
-    origin: process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000',
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
     credentials: true,
   })
 );

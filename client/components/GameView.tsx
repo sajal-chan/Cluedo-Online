@@ -1,8 +1,7 @@
 'use client';
 
-import { useGameSocket } from '../../GameSocketContext';
 import { useState, useEffect } from 'react';
-import { SocketEvents, Card } from '@shared/types';
+import { SocketEvents, Card, GameState } from '@shared/types';
 import { PlayerCircle } from '@/components/PlayerCircle';
 import { MyHand } from '@/components/MyHand';
 import { Notebook } from '@/components/Notebook';
@@ -11,14 +10,13 @@ import { DisproveModal } from '@/components/DisproveModal';
 import { AccuseModal } from '@/components/AccuseModal';
 import { PrivateChatModal } from '@/components/PrivateChatModal';
 
-interface GamePageProps {
-  params: {
-    roomId: string;
-  };
+interface GameViewProps {
+  gameState: GameState;
+  roomId: string;
+  emit: (event: string, data: any, callback?: (response: any) => void) => void;
 }
 
-export default function GamePage({ params }: GamePageProps) {
-  const { gameState, emit } = useGameSocket();
+export function GameView({ gameState, roomId, emit }: GameViewProps) {
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   const [showAccuseModal, setShowAccuseModal] = useState(false);
   const [showPrivateChatModal, setShowPrivateChatModal] = useState(false);
@@ -74,7 +72,7 @@ export default function GamePage({ params }: GamePageProps) {
   const handleSuggest = (suspect: Card, weapon: Card, room: Card) => {
     emit(
       SocketEvents.MAKE_SUGGESTION,
-      { roomId: params.roomId, userId, suspect, weapon, room },
+      { roomId, userId, suspect, weapon, room },
       (result: any) => {
         if (result.success) {
           setShowSuggestModal(false);
@@ -88,7 +86,7 @@ export default function GamePage({ params }: GamePageProps) {
   const handleAccuse = (suspect: Card, weapon: Card, room: Card) => {
     emit(
       SocketEvents.MAKE_ACCUSATION,
-      { roomId: params.roomId, userId, suspect, weapon, room },
+      { roomId, userId, suspect, weapon, room },
       (result: any) => {
         if (result.success) {
           setShowAccuseModal(false);
@@ -102,7 +100,7 @@ export default function GamePage({ params }: GamePageProps) {
   const handleRevealCard = (card: Card) => {
     emit(
       SocketEvents.REVEAL_CARD,
-      { roomId: params.roomId, userId, card },
+      { roomId, userId, card },
       (result: any) => {
         if (!result.success) {
           alert(`Error: ${result.error}`);
@@ -115,7 +113,7 @@ export default function GamePage({ params }: GamePageProps) {
     if (!privateChatTarget) return;
 
     emit(SocketEvents.SEND_PRIVATE_MSG, {
-      roomId: params.roomId,
+      roomId,
       fromUserId: userId,
       toUserId: privateChatTarget,
       message,
@@ -131,17 +129,7 @@ export default function GamePage({ params }: GamePageProps) {
     }
   };
 
-  if (!gameState) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-400 mx-auto mb-4" />
-          <p className="text-gray-300">Loading game...</p>
-        </div>
-      </div>
-    );
-  }
-
+  // Game over screen
   if (gameState.phase === 'GAME_OVER') {
     const winner = gameState.players.find((p) => p.userId === gameState.winnerId);
     return (
@@ -176,6 +164,7 @@ export default function GamePage({ params }: GamePageProps) {
     );
   }
 
+  // Main game screen
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black p-4">
       <Notebook />

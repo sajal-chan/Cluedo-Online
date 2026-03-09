@@ -26,7 +26,7 @@ export default function HomePage() {
     emit(SocketEvents.JOIN_ROOM, { userId, name: playerName }, (result: any) => {
       setIsCreating(false);
       if (result.success) {
-        router.push(`/lobby/${result.roomId}`);
+        router.push(`/${result.roomId}`);
       } else {
         alert(`Error: ${result.error}`);
       }

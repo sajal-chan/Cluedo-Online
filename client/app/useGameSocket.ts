@@ -14,20 +14,26 @@ interface UseGameSocketReturn {
 }
 
 export function useGameSocket(): UseGameSocketReturn {
+  const [userId, setUserId] = useState<string | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
 
+  // Initialize userId from localStorage
   useEffect(() => {
-    // Get or create userId
-    let userId = localStorage.getItem('clue_userId');
-    if (!userId) {
-      userId = uuidv4();
-      localStorage.setItem('clue_userId', userId);
+    let id = localStorage.getItem('clue_userId');
+    if (!id) {
+      id = uuidv4();
+      localStorage.setItem('clue_userId', id);
     }
+    setUserId(id);
+  }, []);
 
-    // Connect socket
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
+  // Connect socket
+  useEffect(() => {
+    if (!userId) return; // Wait until userId is initialized
+
     const socket = io(socketUrl, {
       auth: {
         userId,
@@ -77,9 +83,8 @@ export function useGameSocket(): UseGameSocketReturn {
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [userId, socketUrl]);
 
-  const userId = typeof window !== 'undefined' ? localStorage.getItem('clue_userId') : null;
   const myHand = gameState?.players.find((p) => p.userId === userId)?.hand || [];
 
   const emit = useCallback(

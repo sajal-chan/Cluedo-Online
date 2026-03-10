@@ -53,7 +53,7 @@ export default function HomePage() {
       (result: any) => {
         setIsJoining(false);
         if (result.success) {
-          router.push(`/lobby/${result.roomId}`);
+          router.push(`/${result.roomId}`);
         } else {
           alert(`Error: ${result.error}`);
         }

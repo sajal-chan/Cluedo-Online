@@ -523,7 +523,7 @@ export class GameManager {
     }
 
     room.phase = 'IDLE';
-    room.timerEndsAt = null;
+    room.timerEndsAt = Date.now() + 60000; // 60 second timer for player's turn
   }
 
   getStateForPlayer(roomId: string, userId: string): GameState | undefined {

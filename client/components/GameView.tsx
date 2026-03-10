@@ -175,9 +175,11 @@ export function GameView({ gameState, roomId, emit }: GameViewProps) {
           <h1 className="text-3xl font-bold text-purple-400">🎲 Cluedo</h1>
           <div className="text-right">
             <p className="text-gray-300">
-              {gameState.phase === 'DISPROVING' && timeRemaining > 0
+              {
+              (gameState.phase === 'DISPROVING' || (gameState.phase === 'IDLE' && isMyTurn)) && timeRemaining > 0
                 ? `Time: ${timeRemaining}s`
-                : gameState.phase}
+                : gameState.phase
+              }
             </p>
             {isMyTurn && gameState.phase === 'IDLE' && (
               <p className="text-green-400 font-bold">Your Turn</p>

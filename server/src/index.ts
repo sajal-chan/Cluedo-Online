@@ -10,6 +10,7 @@ const httpServer = createServer(app); //first thing to touch the incoming traffi
 const io = new Server(httpServer, { //for socket.io connections
   cors: {
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    methods: ["GET", "POST"],
     credentials: true,
   },
 });
@@ -17,6 +18,7 @@ const io = new Server(httpServer, { //for socket.io connections
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    methods: ["GET", "POST"],
     credentials: true,
   })
 );

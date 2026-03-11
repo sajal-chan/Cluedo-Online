@@ -13,7 +13,7 @@ interface RoomPageProps {
 }
 
 export default function RoomPage({ params }: RoomPageProps) {
-  const { gameState, emit, isConnected } = useGameSocket();
+  const { gameState, emit, isConnected, socket } = useGameSocket();
 
   // Join the room when component mounts and socket is connected
   useEffect(() => {
@@ -57,5 +57,5 @@ export default function RoomPage({ params }: RoomPageProps) {
   }
 
   // All other phases (IDLE, DISPROVING, GAME_OVER, etc.) show the game view
-  return <GameView gameState={gameState} roomId={params.roomId} emit={emit} />;
+  return <GameView gameState={gameState} roomId={params.roomId} emit={emit} socket={socket} />;
 }

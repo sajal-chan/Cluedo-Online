@@ -59,10 +59,9 @@ export function useGameSocket(): UseGameSocketReturn {
       setGameState(state);
     });
 
-    socket.on(SocketEvents.PRIVATE_MESSAGE, (data: { fromName: string; message: string }) => {
-      console.log(`Private message from ${data.fromName}: ${data.message}`);
-      // TODO: In a full app, this would be shown in a message queue UI
-      alert(`${data.fromName}: ${data.message}`);
+    socket.on(SocketEvents.PRIVATE_MESSAGE, (data: { fromUserId: string; fromName: string; message: string; timestamp: number }) => {
+      // Message will be handled by GameView listener
+      console.log(`Message from ${data.fromName}: ${data.message}`);
     });
 
     socket.on(SocketEvents.REQUEST_REVEAL, () => {

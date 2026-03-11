@@ -206,41 +206,82 @@ io.on('connection', (socket) => {
     }
   );
 
-  // SEND_PRIVATE_MSG event
+  // SEND_PRIVATE_MSG event - handles both global and private messages
   socket.on(
     SocketEvents.SEND_PRIVATE_MSG,
-    (data: { roomId: string; fromUserId: string; toUserId: string; message: string }, callback) => {
+    (data: { roomId: string; fromUserId: string; toUserId?: string; message: string }, callback?: (response: any) => void) => {
       try {
         const room = gameManager.getRoom(data.roomId);
         if (!room) {
-          callback({ success: false, error: 'Room not found' });
-          return;
-        }
-
-        const recipient = room.players.find((p) => p.userId === data.toUserId);
-        if (!recipient || !recipient.socketId) {
-          callback({ success: false, error: 'Recipient not found or disconnected' });
+          callback?.({ success: false, error: 'Room not found' });
           return;
         }
 
         const sender = room.players.find((p) => p.userId === data.fromUserId);
         if (!sender) {
-          callback({ success: false, error: 'Sender not found' });
+          callback?.({ success: false, error: 'Sender not found' });
           return;
         }
 
-        const recipientSocket = io.sockets.sockets.get(recipient.socketId);
-        if (recipientSocket) {
-          recipientSocket.emit(SocketEvents.PRIVATE_MESSAGE, {
-            fromName: sender.name,
-            message: data.message,
+        const isPrivate = data.toUserId !== undefined && data.toUserId !== null;
+
+        if (isPrivate) {
+          // Private message - only to specific recipient and sender
+          const recipient = room.players.find((p) => p.userId === data.toUserId);
+          if (!recipient) {
+            callback?.({ success: false, error: 'Recipient not found' });
+            return;
+          }
+
+          // Send to recipient
+          if (recipient.socketId) {
+            const recipientSocket = io.sockets.sockets.get(recipient.socketId);
+            if (recipientSocket) {
+              recipientSocket.emit(SocketEvents.PRIVATE_MESSAGE, {
+                fromUserId: sender.userId,
+                fromName: sender.name,
+                message: data.message,
+                timestamp: Date.now(),
+                toUserId: recipient.userId,
+                isPrivate: true,
+              });
+            }
+          }
+
+          // Send to sender so they see it in their chat too
+          const senderSocket = io.sockets.sockets.get(sender.socketId);
+          if (senderSocket) {
+            senderSocket.emit(SocketEvents.PRIVATE_MESSAGE, {
+              fromUserId: sender.userId,
+              fromName: sender.name,
+              message: data.message,
+              timestamp: Date.now(),
+              toUserId: recipient.userId,
+              isPrivate: true,
+            });
+          }
+        } else {
+          // Global message - broadcast to all players in the room
+          room.players.forEach((player) => {
+            if (player.socketId) {
+              const playerSocket = io.sockets.sockets.get(player.socketId);
+              if (playerSocket) {
+                playerSocket.emit(SocketEvents.PRIVATE_MESSAGE, {
+                  fromUserId: sender.userId,
+                  fromName: sender.name,
+                  message: data.message,
+                  timestamp: Date.now(),
+                  isPrivate: false,
+                });
+              }
+            }
           });
         }
 
-        callback({ success: true });
+        callback?.({ success: true });
       } catch (error) {
         console.error('Error in SEND_PRIVATE_MSG:', error);
-        callback({ success: false, error: (error as Error).message });
+        callback?.({ success: false, error: (error as Error).message });
       }
     }
   );

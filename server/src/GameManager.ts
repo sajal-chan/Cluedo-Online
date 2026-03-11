@@ -216,12 +216,18 @@ export class GameManager {
     room.envelope = envelope;
     room.deck = remaining;
     room.currentTurnIndex = 0;
+    room.timerEndsAt = Date.now() + 60000; // 60 second timer for first player's turn
 
     room.log.push({
       timestamp: Date.now(),
       message: 'Game started!',
       isPrivate: false,
       visibleTo: [],
+    });
+
+    // Start timer for first player's turn
+    this.timerManager.start(roomId, 60000, () => {
+      this.handleTurnTimeout(roomId);
     });
 
     this.broadcastCallback(roomId);
@@ -239,6 +245,18 @@ export class GameManager {
 
     const suggester = gameRoom.players.find((p) => p.userId === userId);
     if (!suggester) throw new Error('Player not found');
+
+    // Validate that at least one card is not in the suggester's hand
+    const hasSuspect = suggester.hand.some((card) => card.name === suspect.name);
+    const hasWeapon = suggester.hand.some((card) => card.name === weapon.name);
+    const hasRoom = suggester.hand.some((card) => card.name === room.name);
+
+    // If all three cards are in their hand, reject the suggestion
+    if (hasSuspect && hasWeapon && hasRoom) {
+      throw new Error(
+        'You cannot suggest cards that are all in your hand. At least one card must be outside your hand to make a suggestion.'
+      );
+    }
 
     gameRoom.phase = 'SUGGESTING';
 
@@ -315,7 +333,7 @@ export class GameManager {
 
     if (!disprover || !suggester) throw new Error('Player not found');
 
-    // Log to suggester only
+    // Log to suggester only - they see what card disproved their suggestion
     room.log.push({
       timestamp: Date.now(),
       message: `${disprover.name} disproved your suggestion with ${card.name}`,
@@ -323,7 +341,15 @@ export class GameManager {
       visibleTo: [suggester.userId],
     });
 
-    // Public log
+    // Log to disprover only - they see what card they used
+    room.log.push({
+      timestamp: Date.now(),
+      message: `You disproved ${suggester.name}'s suggestion with ${card.name}`,
+      isPrivate: true,
+      visibleTo: [disprover.userId],
+    });
+
+    // Public log - everyone else just sees that someone disproved, not which card
     room.log.push({
       timestamp: Date.now(),
       message: `${disprover.name} disproved ${suggester.name}'s suggestion`,
@@ -337,6 +363,27 @@ export class GameManager {
     room.phase = 'IDLE';
 
     // Advance turn
+    this.advanceTurn(roomId);
+  }
+
+  handleTurnTimeout(roomId: string): void {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+
+    if (room.phase === 'GAME_OVER') return;
+
+    const currentPlayer = room.players[room.currentTurnIndex];
+    if (currentPlayer) {
+      room.log.push({
+        timestamp: Date.now(),
+        message: `${currentPlayer.name} ran out of time, turn passed`,
+        isPrivate: false,
+        visibleTo: [],
+      });
+    }
+
+    // Advance to next player's turn
+    this.timerManager.clear(roomId);
     this.advanceTurn(roomId);
   }
 
@@ -524,6 +571,14 @@ export class GameManager {
 
     room.phase = 'IDLE';
     room.timerEndsAt = Date.now() + 60000; // 60 second timer for player's turn
+
+    // Clear any existing timer and start new one for this player's turn
+    this.timerManager.clear(roomId);
+    this.timerManager.start(roomId, 60000, () => {
+      this.handleTurnTimeout(roomId);
+    });
+
+    this.broadcastCallback(roomId);
   }
 
   getStateForPlayer(roomId: string, userId: string): GameState | undefined {
@@ -535,6 +590,15 @@ export class GameManager {
       hand: player.userId === userId ? player.hand : [],
     }));
 
+    // Filter logs based on player visibility
+    const filteredLogs = room.log.filter((logEntry) => {
+      // Public logs are visible to everyone
+      if (!logEntry.isPrivate) return true;
+      
+      // Private logs only visible to players in visibleTo array
+      return logEntry.visibleTo?.includes(userId);
+    });
+
     return {//manually return all these things so we dont leake any of the card data to an opponent
       roomId: room.roomId,
       phase: room.phase,
@@ -542,7 +606,7 @@ export class GameManager {
       currentTurnIndex: room.currentTurnIndex,
       disproveContext: room.disproveContext,
       timerEndsAt: room.timerEndsAt,
-      log: room.log,
+      log: filteredLogs,
       winnerId: room.winnerId,
     };
   }

@@ -2,27 +2,29 @@
 
 import { useState, useEffect } from 'react';
 import { SocketEvents, Card, GameState } from '@shared/types';
+import { Socket } from 'socket.io-client';
 import { PlayerCircle } from '@/components/PlayerCircle';
 import { MyHand } from '@/components/MyHand';
 import { Notebook } from '@/components/Notebook';
 import { SuggestModal } from '@/components/SuggestModal';
 import { DisproveModal } from '@/components/DisproveModal';
 import { AccuseModal } from '@/components/AccuseModal';
-import { PrivateChatModal } from '@/components/PrivateChatModal';
+import { ChatWindow, ChatMessage } from '@/components/ChatWindow';
+import { v4 as uuidv4 } from 'uuid';
 
 interface GameViewProps {
   gameState: GameState;
   roomId: string;
   emit: (event: string, data: any, callback?: (response: any) => void) => void;
+  socket: Socket | null;
 }
 
-export function GameView({ gameState, roomId, emit }: GameViewProps) {
+export function GameView({ gameState, roomId, emit, socket }: GameViewProps) {
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   const [showAccuseModal, setShowAccuseModal] = useState(false);
-  const [showPrivateChatModal, setShowPrivateChatModal] = useState(false);
-  const [privateChatTarget, setPrivateChatTarget] = useState<string | null>(null);
   const [matchingCards, setMatchingCards] = useState<Card[]>([]);
   const [timeRemaining, setTimeRemaining] = useState(60);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   const userId = typeof window !== 'undefined' ? localStorage.getItem('clue_userId') : '';
   const currentPlayer = gameState?.players[gameState.currentTurnIndex];
@@ -31,6 +33,40 @@ export function GameView({ gameState, roomId, emit }: GameViewProps) {
   const isMyTurnToDisprove =
     gameState?.phase === 'DISPROVING' &&
     gameState.disproveContext?.currentDisproverUserId === userId;
+
+  // Listen for incoming chat messages
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleIncomingMessage = (data: {
+      fromUserId: string;
+      fromName: string;
+      message: string;
+      timestamp: number;
+      toUserId?: string;
+      isPrivate?: boolean;
+    }) => {
+      const isPrivate = data.toUserId !== undefined && data.toUserId !== null;
+      const newMessage: ChatMessage = {
+        id: uuidv4(),
+        fromName: data.fromName,
+        fromUserId: data.fromUserId,
+        message: data.message,
+        timestamp: data.timestamp,
+        isPrivate,
+        visibleTo: isPrivate
+          ? [data.fromUserId, data.toUserId || '']
+          : undefined,
+      };
+      setChatMessages((prev) => [...prev, newMessage]);
+    };
+
+    socket.on(SocketEvents.PRIVATE_MESSAGE, handleIncomingMessage);
+
+    return () => {
+      socket.off(SocketEvents.PRIVATE_MESSAGE, handleIncomingMessage);
+    };
+  }, [socket]);
 
   // Set matching cards when need to disprove
   useEffect(() => {
@@ -52,7 +88,7 @@ export function GameView({ gameState, roomId, emit }: GameViewProps) {
 
   // Timer logic
   useEffect(() => {
-    if (gameState?.timerEndsAt) {
+    if (gameState?.timerEndsAt && gameState.timerEndsAt > 0) {
       const interval = setInterval(() => {
         const remaining = Math.max(
           0,
@@ -62,10 +98,16 @@ export function GameView({ gameState, roomId, emit }: GameViewProps) {
 
         if (remaining === 0) {
           clearInterval(interval);
+          setTimeRemaining(0);
         }
       }, 100);
 
+      // Set initial time
+      setTimeRemaining(Math.max(0, Math.ceil((gameState.timerEndsAt - Date.now()) / 1000)));
+
       return () => clearInterval(interval);
+    } else {
+      setTimeRemaining(0);
     }
   }, [gameState?.timerEndsAt]);
 
@@ -109,23 +151,49 @@ export function GameView({ gameState, roomId, emit }: GameViewProps) {
     );
   };
 
-  const handleSendPrivateMessage = (message: string) => {
-    if (!privateChatTarget) return;
+  const handleSendPrivateMessage = (message: string, targetUserId?: string | null) => {
+    if (!message.trim()) return;
 
-    emit(SocketEvents.SEND_PRIVATE_MSG, {
-      roomId,
-      fromUserId: userId,
-      toUserId: privateChatTarget,
+    const myPlayer = gameState?.players.find((p) => p.userId === userId);
+    const isPrivate = targetUserId !== null && targetUserId !== undefined;
+
+    // Create message for local display
+    const newMessage: ChatMessage = {
+      id: uuidv4(),
+      fromName: myPlayer?.name || 'Unknown',
+      fromUserId: userId || '',
       message,
-    });
+      timestamp: Date.now(),
+      isPrivate,
+      visibleTo: isPrivate ? [userId || '', targetUserId] : undefined,
+    };
 
-    setShowPrivateChatModal(false);
+    setChatMessages((prev) => [...prev, newMessage]);
+
+    // Send to server
+    if (isPrivate) {
+      emit(SocketEvents.SEND_PRIVATE_MSG, {
+        roomId,
+        fromUserId: userId,
+        toUserId: targetUserId,
+        message,
+      });
+    } else {
+      emit(SocketEvents.SEND_PRIVATE_MSG, {
+        roomId,
+        fromUserId: userId,
+        message,
+      });
+    }
   };
 
   const handlePlayerAvatarClick = (targetUserId: string) => {
     if (targetUserId !== userId) {
-      setPrivateChatTarget(targetUserId);
-      setShowPrivateChatModal(true);
+      // Focus chat and scroll to bottom for private conversation
+      const chatInput = document.querySelector('.chat-input') as HTMLTextAreaElement;
+      if (chatInput) {
+        chatInput.focus();
+      }
     }
   };
 
@@ -226,6 +294,11 @@ export function GameView({ gameState, roomId, emit }: GameViewProps) {
               ))}
             </div>
           </div>
+          {isMyTurn && gameState.phase === 'IDLE' && timeRemaining > 0 && (
+            <div className="mt-2 text-center text-yellow-400 font-semibold">
+              Time remaining: {timeRemaining}s
+            </div>
+          )}
         </div>
 
         {/* Right Column - Actions */}
@@ -288,20 +361,13 @@ export function GameView({ gameState, roomId, emit }: GameViewProps) {
         onAccuse={handleAccuse}
       />
 
-      {/* Private Chat Modal */}
-      {privateChatTarget && (
-        <PrivateChatModal
-          isOpen={showPrivateChatModal}
-          playerName={
-            gameState.players.find((p) => p.userId === privateChatTarget)?.name || ''
-          }
-          onClose={() => {
-            setShowPrivateChatModal(false);
-            setPrivateChatTarget(null);
-          }}
-          onSendMessage={handleSendPrivateMessage}
-        />
-      )}
+      {/* Chat Window */}
+      <ChatWindow
+        messages={chatMessages}
+        onSendMessage={handleSendPrivateMessage}
+        players={gameState.players}
+        currentUserId={userId || ''}
+      />
     </div>
   );
 }

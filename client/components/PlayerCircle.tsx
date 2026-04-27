@@ -31,7 +31,7 @@ export function PlayerCircle({
             <button
               key={player.userId}
               onClick={() => onPlayerClick?.(player.userId)}
-              className="absolute w-24 h-24 rounded-full flex flex-col items-center justify-center text-center text-xs font-semibold transition-all"
+              className="absolute w-24 h-24 rounded-full flex flex-col items-center justify-center text-center text-xs font-semibold transition-all group"
               style={{
                 backgroundColor: player.color,
                 left: `${x - 48}px`,
@@ -44,7 +44,12 @@ export function PlayerCircle({
                 opacity: player.isEliminated ? 0.5 : 1,
               }}
             >
-              <div className="text-white drop-shadow-md">
+              {player.isBot && (
+                <span className="absolute -top-1 -right-1 px-1.5 py-0.5 bg-blue-600 text-white text-[8px] font-black rounded border border-white uppercase transform rotate-12 shadow-lg">
+                  AI
+                </span>
+              )}
+              <div className="text-white drop-shadow-md font-bold uppercase tracking-wider">
                 {player.isEliminated ? '💀' : player.name.split(' ')[0]}
               </div>
               <div className="text-white text-xs drop-shadow-md">

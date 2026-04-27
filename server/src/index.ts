@@ -1,3 +1,5 @@
+import * as dotenv from 'dotenv';
+dotenv.config();
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -126,6 +128,17 @@ io.on('connection', (socket) => {
       callback({ success: true });
     } catch (error) {
       console.error('Error in START_GAME:', error);
+      callback({ success: false, error: (error as Error).message });
+    }
+  });
+
+  // ADD_BOT event
+  socket.on(SocketEvents.ADD_BOT, (data: { roomId: string; userId: string }, callback) => {
+    try {
+      gameManager.addBot(data.roomId, data.userId);
+      callback({ success: true });
+    } catch (error) {
+      console.error('Error in ADD_BOT:', error);
       callback({ success: false, error: (error as Error).message });
     }
   });

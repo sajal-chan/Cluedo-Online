@@ -12,6 +12,7 @@ export const SUSPECTS = [
   'Col. Mustard',
   'Mrs. White',
   'Mr. Green',
+  'Mrs. Peacock',
   'Professor Plum',
 ];
 
@@ -45,6 +46,7 @@ export interface Player {
   hand: Card[];
   isEliminated: boolean;
   isConnected: boolean;
+  isBot?: boolean;
 }
 
 // Envelope (solution)
@@ -76,6 +78,8 @@ export interface GameState {
   timerEndsAt: number | null;
   log: LogEntry[];
   winnerId: string | null;
+  isBotThinking?: boolean;
+  botThinkingUserId?: string | null;
 }
 
 export interface LogEntry {
@@ -95,6 +99,7 @@ export const SocketEvents = {
   MAKE_ACCUSATION: 'make_accusation',
   SEND_PRIVATE_MSG: 'send_private_msg',
   RECONNECT_AUTH: 'reconnect_auth',
+  ADD_BOT: 'add_bot',
 
   // Server → Client
   GAME_STATE_UPDATE: 'game_state_update',
@@ -103,6 +108,7 @@ export const SocketEvents = {
   PRIVATE_MESSAGE: 'private_message',
   ERROR_MSG: 'error_msg',
   TIMER_UPDATE: 'timer_update',
+  BOT_THINKING: 'bot_thinking',
 } as const;
 
 // Helper types
@@ -134,6 +140,8 @@ export interface RoomState {
   timerEndsAt: number | null;
   log: LogEntry[];
   winnerId: string | null;
+  isBotThinking?: boolean;
+  botThinkingUserId?: string | null;
 }
 
 // Player colors

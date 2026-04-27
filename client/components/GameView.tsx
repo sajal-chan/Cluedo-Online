@@ -234,7 +234,18 @@ export function GameView({ gameState, roomId, emit, socket }: GameViewProps) {
 
   // Main game screen
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black p-4">
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black p-4 relative">
+      {gameState.isBotThinking && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-gray-900 border border-purple-500 p-8 rounded-2xl shadow-2xl text-center max-w-sm mx-4">
+            <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
+            <h2 className="text-2xl font-bold text-white mb-2">Bot is Thinking...</h2>
+            <p className="text-gray-400 italic">
+              {gameState.players.find(p => p.userId === gameState.botThinkingUserId)?.name} is analyzing the evidence.
+            </p>
+          </div>
+        </div>
+      )}
       <Notebook />
 
       {/* Header */}

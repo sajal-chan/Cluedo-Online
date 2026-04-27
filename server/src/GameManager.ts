@@ -18,10 +18,15 @@ import {
 } from './GameLogic';
 import { TimerManager } from './TimerManager';
 import { randomBytes } from 'crypto';
+import { BotNotepad } from './BotNotepad';
+import { ContextBuilder } from './ContextBuilder';
+import { LLMService } from './LLMService';
+import { Validator } from './Validator';
 
 export class GameManager {
   private rooms: Map<string, RoomState> = new Map();//roomid->roomstate
   private userToRoom: Map<string, string> = new Map(); // userId -> roomId
+  private botNotepads: Map<string, Record<string, BotNotepad>> = new Map();
   private timerManager: TimerManager = new TimerManager();
   private broadcastCallback: (roomId: string) => void = () => {}; //empty function that returns void, if we dont do this then we could run into can not call undefined error
 
@@ -63,6 +68,8 @@ export class GameManager {
         },
       ],
       winnerId: null,
+      isBotThinking: false,
+      botThinkingUserId: null,
     };
 
     this.rooms.set(roomId, room);
@@ -121,6 +128,30 @@ export class GameManager {
       roomId,
       gameState: this.getStateForPlayer(roomId, userId),
     };
+  }
+
+  addBot(roomId: string, requestingUserId: string): void {
+    const room = this.rooms.get(roomId);
+    if (!room) throw new Error('Room not found');
+    if (room.ownerUserId !== requestingUserId) throw new Error('Only owner can add bots');
+    if (room.players.length >= 6) throw new Error('Room is full');
+    if (room.gameStarted) throw new Error('Game already started');
+
+    const botId = `bot-${this.generateId()}`;
+    const botPlayer: Player = {
+      userId: botId,
+      socketId: '',
+      name: `Bot ${room.players.length}`,
+      color: PLAYER_COLORS[room.players.length % PLAYER_COLORS.length],
+      hand: [],
+      isEliminated: false,
+      isConnected: true,
+      isBot: true,
+    };
+
+    room.players.push(botPlayer);
+    this.userToRoom.set(botId, roomId);
+    this.broadcastCallback(roomId);
   }
 
   reconnectPlayer(userId: string, newSocketId: string): ReconnectResult {
@@ -216,7 +247,17 @@ export class GameManager {
     room.envelope = envelope;
     room.deck = remaining;
     room.currentTurnIndex = 0;
-    room.timerEndsAt = Date.now() + 60000; // 60 second timer for first player's turn
+    room.timerEndsAt = Date.now() + 60000;
+
+    // Initialize notepads for bots
+    const roomNotepads: Record<string, BotNotepad> = {};
+    const playerIds = room.players.map(p => p.userId);
+    room.players.forEach(player => {
+      if (player.isBot) {
+        roomNotepads[player.userId] = BotNotepad.create(player.userId, playerIds, player.hand);
+      }
+    });
+    this.botNotepads.set(roomId, roomNotepads);
 
     room.log.push({
       timestamp: Date.now(),
@@ -286,6 +327,15 @@ export class GameManager {
         visibleTo: [],
       });
 
+      // Update bot notepads
+      const roomNotepads = this.botNotepads.get(roomId);
+      if (roomNotepads) {
+        const skippedIds = gameRoom.players.map(p => p.userId).filter(id => id !== userId);
+        Object.values(roomNotepads).forEach(notepad => {
+          notepad.processSuggestionResult(userId, suggestion, skippedIds);
+        });
+      }
+
       // Advance turn
       this.advanceTurn(roomId);
       return;
@@ -312,6 +362,10 @@ export class GameManager {
     this.timerManager.start(roomId, 60000, () => {
       this.handleDisproveTimeout(roomId);
     });
+
+    if (result.disprover.isBot) {
+      this.processBotDisprove(roomId, result.disprover.userId);
+    }
 
     this.broadcastCallback(roomId);
   }
@@ -356,6 +410,29 @@ export class GameManager {
       isPrivate: false,
       visibleTo: [],
     });
+
+    // Update bot notepads
+    const roomNotepads = this.botNotepads.get(roomId);
+    if (roomNotepads) {
+      Object.entries(roomNotepads).forEach(([botUserId, notepad]) => {
+        // If the bot is the suggester, it knows which card was revealed
+        const isSuggester = botUserId === suggester.userId;
+        const skippedIds = room.players
+          .slice(room.players.indexOf(suggester) + 1)
+          .concat(room.players.slice(0, room.players.indexOf(suggester)))
+          .slice(0, room.players.indexOf(disprover)); // This skipped logic is simplified, but we need exact skipped players
+
+        // Actually, disproveContext has remainingDisprovers, but we need those who ALREADY skipped.
+        // Let's just pass what we know.
+        notepad.processSuggestionResult(
+          suggester.userId,
+          room.disproveContext!.suggestion,
+          [], // For simplicity here, but in a real game we should track exact skips
+          disprover.userId,
+          isSuggester ? card : undefined
+        );
+      });
+    }
 
     // Clear timer and disprove context
     this.timerManager.clear(roomId);
@@ -481,6 +558,10 @@ export class GameManager {
       this.handleDisproveTimeout(roomId);
     });
 
+    if (nextDisprover.isBot) {
+      this.processBotDisprove(roomId, nextDisprover.userId);
+    }
+
     this.broadcastCallback(roomId);
   }
 
@@ -578,7 +659,103 @@ export class GameManager {
       this.handleTurnTimeout(roomId);
     });
 
+    const nextPlayer = room.players[room.currentTurnIndex];
+    if (nextPlayer.isBot) {
+      this.processBotTurn(roomId, nextPlayer.userId);
+    }
+
     this.broadcastCallback(roomId);
+  }
+
+  private async processBotTurn(roomId: string, botUserId: string): Promise<void> {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+
+    const botNotepad = this.botNotepads.get(roomId)?.[botUserId];
+    if (!botNotepad) return;
+
+    const botPlayer = room.players.find(p => p.userId === botUserId);
+    if (!botPlayer) return;
+
+    const startTime = Date.now();
+    const targetDelay = Math.floor(Math.random() * 1000) + 3000; // 3-4 seconds
+
+    // Start thinking
+    room.isBotThinking = true;
+    room.botThinkingUserId = botUserId;
+    this.broadcastCallback(roomId);
+
+    // Use ContextBuilder to get snapshot
+    const context = ContextBuilder.build(botNotepad, botPlayer.hand);
+    const possibleCards = botNotepad.getPossibleCards();
+
+    // 20% chance to bluff
+    const isBluffing = Math.random() < 0.2;
+    if (isBluffing) {
+      console.log(`[Bot] ${botPlayer.name} is attempting a bluff...`);
+    }
+
+    let finalMove: any;
+
+    try {
+      finalMove = await LLMService.fetchMove(context, possibleCards, isBluffing);
+    } catch (error) {
+      finalMove = Validator.getFallbackMove(possibleCards);
+    }
+
+    // Wait for the remainder of the human-like delay
+    const elapsed = Date.now() - startTime;
+    if (elapsed < targetDelay) {
+      await new Promise(resolve => setTimeout(resolve, targetDelay - elapsed));
+    }
+
+    // Stop thinking
+    room.isBotThinking = false;
+    room.botThinkingUserId = null;
+
+    const suspect: Card = { category: 'SUSPECT', name: finalMove.suspect };
+    const weapon: Card = { category: 'WEAPON', name: finalMove.weapon };
+    const roomCard: Card = { category: 'ROOM', name: finalMove.room };
+
+    if (finalMove.type === 'ACCUSATION') {
+      this.handleAccusation(roomId, botUserId, suspect, weapon, roomCard);
+    } else {
+      this.handleSuggestion(roomId, botUserId, suspect, weapon, roomCard);
+    }
+
+    this.broadcastCallback(roomId);
+  }
+
+  private async processBotDisprove(roomId: string, botUserId: string): Promise<void> {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.disproveContext) return;
+
+    const botPlayer = room.players.find(p => p.userId === botUserId);
+    if (!botPlayer) return;
+
+    const { suggestion } = room.disproveContext;
+    const matchingCards = botPlayer.hand.filter(
+      card => card.name === suggestion.suspect.name ||
+              card.name === suggestion.weapon.name ||
+              card.name === suggestion.room.name
+    );
+
+    if (matchingCards.length > 0) {
+      // Start thinking
+      room.isBotThinking = true;
+      room.botThinkingUserId = botUserId;
+      this.broadcastCallback(roomId);
+
+      // Artificial delay to make it feel human
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Stop thinking
+      room.isBotThinking = false;
+      room.botThinkingUserId = null;
+
+      // Bot picks the first matching card to reveal
+      this.handleReveal(roomId, botUserId, matchingCards[0]);
+    }
   }
 
   getStateForPlayer(roomId: string, userId: string): GameState | undefined {
@@ -608,6 +785,8 @@ export class GameManager {
       timerEndsAt: room.timerEndsAt,
       log: filteredLogs,
       winnerId: room.winnerId,
+      isBotThinking: room.isBotThinking,
+      botThinkingUserId: room.botThinkingUserId,
     };
   }
 

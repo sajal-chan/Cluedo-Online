@@ -21,6 +21,14 @@ export function LobbyView({ gameState, roomId, emit }: LobbyViewProps) {
     });
   };
 
+  const handleAddBot = () => {
+    emit(SocketEvents.ADD_BOT, { roomId, userId }, (result: any) => {
+      if (!result.success) {
+        alert(`Error: ${result.error}`);
+      }
+    });
+  };
+
   const isOwner =
     gameState && gameState.players.length > 0
       ? gameState.players[0].userId === userId
@@ -28,6 +36,9 @@ export function LobbyView({ gameState, roomId, emit }: LobbyViewProps) {
 
   const canStart =
     gameState && gameState.players.length >= 2 && gameState.phase === 'LOBBY';
+
+  const canAddBot =
+    isOwner && gameState.players.length < 6 && gameState.phase === 'LOBBY';
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black p-6">
@@ -56,9 +67,16 @@ export function LobbyView({ gameState, roomId, emit }: LobbyViewProps) {
                   {index + 1}
                 </div>
                 <div className="flex-1">
-                  <p className="text-white font-semibold">{player.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-white font-semibold">{player.name}</p>
+                    {player.isBot && (
+                      <span className="px-1.5 py-0.5 bg-blue-900 text-blue-200 text-[10px] font-bold rounded border border-blue-500 uppercase">
+                        AI
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm text-gray-400">
-                    {player.isConnected ? '🟢 Connected' : '🔴 Disconnected'}
+                    {player.isBot ? '🤖 Always Active' : (player.isConnected ? '🟢 Connected' : '🔴 Disconnected')}
                   </p>
                 </div>
                 {index === 0 && (
@@ -77,7 +95,16 @@ export function LobbyView({ gameState, roomId, emit }: LobbyViewProps) {
           )}
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          {canAddBot && (
+            <button
+              onClick={handleAddBot}
+              className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-all"
+            >
+              Add AI Bot
+            </button>
+          )}
+
           {isOwner && canStart && (
             <button
               onClick={handleStartGame}
